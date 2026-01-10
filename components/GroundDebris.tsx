@@ -1,11 +1,13 @@
+
 import React, { useMemo, useRef, useEffect } from 'react';
 import * as THREE from 'three';
+import { getTerrainHeight } from './WorldUtils';
 
-const TWIG_COUNT = 100; 
-const DIRT_MOUND_COUNT = 50; 
-const LEAF_DEBRIS_COUNT = 200; 
-const FALLEN_LOG_COUNT = 20; 
-const ROCK_COUNT = 30;
+const TWIG_COUNT = 60; 
+const DIRT_MOUND_COUNT = 30; 
+const LEAF_DEBRIS_COUNT = 100; 
+const FALLEN_LOG_COUNT = 15; 
+const ROCK_COUNT = 20;
 const DEBRIS_RADIUS = 980;
 
 const GroundDebris: React.FC = () => {
@@ -17,7 +19,7 @@ const GroundDebris: React.FC = () => {
 
   const { twigGeo, twigMat, moundGeo, moundMat, leafGeo, leafMat, logGeo, logMat, rockGeo, rockMat } = useMemo(() => {
     const tGeo = new THREE.CylinderGeometry(0.015, 0.025, 1.2, 3);
-    tGeo.rotateZ(Math.PI / 2);
+    tGeo.rotateZ(Math.PI / 2); 
     const tMat = new THREE.MeshStandardMaterial({ color: "#2d1e14", roughness: 1 });
     
     const mGeo = new THREE.DodecahedronGeometry(0.25, 0);
@@ -37,64 +39,50 @@ const GroundDebris: React.FC = () => {
     return { twigGeo: tGeo, twigMat: tMat, moundGeo: mGeo, moundMat: mMat, leafGeo: lGeo, leafMat: lMat, logGeo: lgGeo, logMat: lgMat, rockGeo: rGeo, rockMat: rMat };
   }, []);
 
-  useEffect(() => {
-    if (!twigRef.current) return;
+  const spawnDebris = (count: number, ref: React.RefObject<THREE.InstancedMesh>, yOffset: number = 0, scaleFn?: () => THREE.Vector3) => {
+    if (!ref.current) return;
     const dummy = new THREE.Object3D();
     
-    for (let i = 0; i < TWIG_COUNT; i++) {
+    for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const r = 5 + Math.sqrt(Math.random()) * DEBRIS_RADIUS;
-      dummy.position.set(Math.cos(angle) * r, 0.03, Math.sin(angle) * r);
+      const x = Math.cos(angle) * r;
+      const z = Math.sin(angle) * r;
+      
+      const y = getTerrainHeight(x, z);
+      
+      // Ajuste fino para colar no chão (y puro = chão puro)
+      dummy.position.set(x, y + yOffset, z);
       dummy.rotation.set(Math.random()*0.2, Math.random() * Math.PI * 2, Math.random()*0.2);
-      dummy.scale.setScalar(0.8 + Math.random());
-      dummy.updateMatrix();
-      twigRef.current.setMatrixAt(i, dummy.matrix);
-    }
-
-    for (let i = 0; i < DIRT_MOUND_COUNT; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const r = 4 + Math.sqrt(Math.random()) * DEBRIS_RADIUS;
-      dummy.position.set(Math.cos(angle) * r, 0.0, Math.sin(angle) * r);
-      dummy.scale.set(1.5, 0.4, 1.5);
-      dummy.updateMatrix();
-      moundRef.current!.setMatrixAt(i, dummy.matrix);
-    }
-
-    for (let i = 0; i < LEAF_DEBRIS_COUNT; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const r = 3 + Math.sqrt(Math.random()) * DEBRIS_RADIUS;
-      dummy.position.set(Math.cos(angle) * r, 0.02, Math.sin(angle) * r);
-      dummy.rotation.set(Math.random()*0.5, Math.random()*Math.PI, Math.random()*0.5);
-      dummy.updateMatrix();
-      leafRef.current!.setMatrixAt(i, dummy.matrix);
-    }
-
-    for (let i = 0; i < FALLEN_LOG_COUNT; i++) {
-      const angle = Math.random() * Math.PI * 2;
-      const r = 15 + Math.sqrt(Math.random()) * DEBRIS_RADIUS;
-      dummy.position.set(Math.cos(angle) * r, 0.15, Math.sin(angle) * r);
-      dummy.rotation.set(0, Math.random() * Math.PI, Math.PI * 0.05);
-      dummy.scale.setScalar(1.0 + Math.random() * 0.5);
-      dummy.updateMatrix();
-      logRef.current!.setMatrixAt(i, dummy.matrix);
-    }
-
-    for (let i = 0; i < ROCK_COUNT; i++) {
-        const angle = Math.random() * Math.PI * 2;
-        const r = 10 + Math.sqrt(Math.random()) * DEBRIS_RADIUS;
-        dummy.position.set(Math.cos(angle) * r, 0.1, Math.sin(angle) * r);
-        dummy.rotation.set(Math.random(), Math.random(), Math.random());
-        dummy.scale.set(1 + Math.random(), 0.5 + Math.random(), 1 + Math.random());
-        dummy.updateMatrix();
-        rockRef.current!.setMatrixAt(i, dummy.matrix);
-    }
-
-    [twigRef, moundRef, leafRef, logRef, rockRef].forEach(ref => {
-      if (ref.current) {
-        ref.current.instanceMatrix.needsUpdate = true;
-        ref.current.computeBoundingSphere();
+      
+      if (scaleFn) {
+        dummy.scale.copy(scaleFn());
+      } else {
+        dummy.scale.setScalar(0.8 + Math.random());
       }
-    });
+      
+      dummy.updateMatrix();
+      ref.current.setMatrixAt(i, dummy.matrix);
+    }
+    ref.current.instanceMatrix.needsUpdate = true;
+  };
+
+  useEffect(() => {
+    // Galhos: Quase zero de offset, só pra não z-fight
+    spawnDebris(TWIG_COUNT, twigRef, 0.02);
+
+    // Montes: Enterrados
+    spawnDebris(DIRT_MOUND_COUNT, moundRef, -0.15, () => new THREE.Vector3(1.5, 0.4, 1.5));
+
+    // Folhas: Coladas
+    spawnDebris(LEAF_DEBRIS_COUNT, leafRef, 0.01);
+
+    // Troncos: Offset = raio aprox
+    spawnDebris(FALLEN_LOG_COUNT, logRef, 0.2, () => new THREE.Vector3(1, 1, 1).multiplyScalar(1.0 + Math.random() * 0.5));
+
+    // Pedras: Enterradas
+    spawnDebris(ROCK_COUNT, rockRef, -0.1, () => new THREE.Vector3(1 + Math.random(), 0.5 + Math.random(), 1 + Math.random()));
+
   }, []);
 
   return (

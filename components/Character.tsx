@@ -1,7 +1,9 @@
+
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { inputState } from './InputState';
+import { getTerrainHeight } from './WorldUtils';
 
 const Character: React.FC<{ isPaused?: boolean }> = ({ isPaused = false }) => {
   const groupRef = useRef<THREE.Group>(null);
@@ -14,7 +16,7 @@ const Character: React.FC<{ isPaused?: boolean }> = ({ isPaused = false }) => {
   const smoothedLookAt = useRef(new THREE.Vector3());
   
   const [keys, setKeys] = useState<Record<string, boolean>>({});
-  const pos = useRef(new THREE.Vector3(0, 0, 0));
+  const pos = useRef(new THREE.Vector3(0, getTerrainHeight(0, 0), 0));
   const velocityY = useRef(0);
   const isGrounded = useRef(true);
   const walkTime = useRef(0);
@@ -23,7 +25,11 @@ const Character: React.FC<{ isPaused?: boolean }> = ({ isPaused = false }) => {
   const MAP_LIMIT = 995;
   const gravity = -35;
   const jumpForce = 13;
-  const COLLISION_RADIUS = 0.6; // Raio do personagem
+  const COLLISION_RADIUS = 0.6; 
+  
+  // FIX: Ajustado para 0, pois removemos o sinkAmount do Ground. 
+  // O pivot do personagem está nos pés, logo Y = terrainHeight.
+  const FLOOR_OFFSET = 0.0;
 
   const materials = useMemo(() => ({
     steel: new THREE.MeshStandardMaterial({ color: "#a1a1aa", metalness: 0.8, roughness: 0.2 }),
@@ -68,7 +74,6 @@ const Character: React.FC<{ isPaused?: boolean }> = ({ isPaused = false }) => {
       const velocity = new THREE.Vector3(Math.sin(targetAngle), 0, Math.cos(targetAngle)).multiplyScalar(speed * dt);
       const nextPos = pos.current.clone().add(velocity);
       
-      // Detecção de Colisão com Árvores
       let canMove = true;
       if (nextPos.length() >= MAP_LIMIT) {
         canMove = false;
@@ -76,7 +81,6 @@ const Character: React.FC<{ isPaused?: boolean }> = ({ isPaused = false }) => {
       } else {
         inputState.characterData.isAtBoundary = false;
         
-        // Checar apenas sólidos próximos (otimização)
         for (const solid of inputState.worldData.solids) {
           const dx = nextPos.x - solid.x;
           const dz = nextPos.z - solid.z;
@@ -91,7 +95,8 @@ const Character: React.FC<{ isPaused?: boolean }> = ({ isPaused = false }) => {
       }
 
       if (canMove) {
-        pos.current.copy(nextPos);
+        pos.current.x = nextPos.x;
+        pos.current.z = nextPos.z;
       }
 
       let diff = targetAngle - currentRotation.current;
@@ -107,10 +112,14 @@ const Character: React.FC<{ isPaused?: boolean }> = ({ isPaused = false }) => {
       velocityY.current = jumpForce;
       isGrounded.current = false;
     }
+    
     velocityY.current += gravity * dt;
     pos.current.y += velocityY.current * dt;
-    if (pos.current.y <= 0) { 
-      pos.current.y = 0; 
+    
+    const terrainH = getTerrainHeight(pos.current.x, pos.current.z);
+    
+    if (pos.current.y <= terrainH + FLOOR_OFFSET) { 
+      pos.current.y = terrainH + FLOOR_OFFSET; 
       velocityY.current = 0; 
       isGrounded.current = true; 
     }
@@ -118,6 +127,7 @@ const Character: React.FC<{ isPaused?: boolean }> = ({ isPaused = false }) => {
     groupRef.current.position.copy(pos.current);
     inputState.characterData.x = pos.current.x;
     inputState.characterData.z = pos.current.z;
+    inputState.characterData.y = pos.current.y; 
 
     const targetCamPos = new THREE.Vector3(
       pos.current.x + camDist * Math.sin(theta) * Math.cos(phi),

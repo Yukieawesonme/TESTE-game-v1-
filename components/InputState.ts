@@ -13,6 +13,7 @@ export const inputState = {
   },
   characterData: {
     x: 0,
+    y: 0, // Altura atual para partículas
     z: 0,
     rotation: 0,
     isAtBoundary: false

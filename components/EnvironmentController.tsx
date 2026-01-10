@@ -1,3 +1,4 @@
+
 import React, { useRef, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Sky, Stars } from '@react-three/drei';
@@ -17,7 +18,7 @@ const SceneSky: React.FC = () => {
     }
   });
 
-  return <Sky ref={skyRef} distance={450000} turbidity={8} rayleigh={6} mieCoefficient={0.005} mieDirectionalG={0.8} />;
+  return <Sky ref={skyRef} distance={450000} turbidity={6} rayleigh={2} mieCoefficient={0.005} mieDirectionalG={0.8} />;
 };
 
 export default function EnvironmentController() {
@@ -27,7 +28,8 @@ export default function EnvironmentController() {
   const cycleDuration = 300; 
 
   useMemo(() => {
-    scene.fog = new THREE.FogExp2('#ccddcc', 0.003);
+    // Fog muito escuro para contrastar com o Bloom das áreas iluminadas
+    scene.fog = new THREE.FogExp2('#050a0e', 0.0025);
   }, [scene]);
   
   useFrame(({ clock }) => {
@@ -42,25 +44,25 @@ export default function EnvironmentController() {
       const isDay = y > 0;
       
       if (isDay) {
-        sunRef.current.intensity = 1.0;
-        sunRef.current.color.set('#ffffff');
+        sunRef.current.intensity = 2.0; // Intensidade alta para estourar o Bloom
+        sunRef.current.color.set('#fffceb'); // Luz solar quente
         
         if (ambientRef.current) {
-            ambientRef.current.intensity = 0.5;
-            ambientRef.current.color.set("#ffffff");
+            ambientRef.current.intensity = 0.4;
+            ambientRef.current.color.set("#cce0ff"); // Ambiente azulado (skylight)
         }
         
         if (scene.fog) {
-            (scene.fog as THREE.FogExp2).color.set('#ccddcc');
+            (scene.fog as THREE.FogExp2).color.set('#050a0e');
         }
       } else {
-        sunRef.current.intensity = 0.1;
-        sunRef.current.color.set('#112233');
+        sunRef.current.intensity = 0.2;
+        sunRef.current.color.set('#0f172a');
         if (ambientRef.current) {
-            ambientRef.current.intensity = 0.2;
-            ambientRef.current.color.set("#0a151a");
+            ambientRef.current.intensity = 0.1;
+            ambientRef.current.color.set("#020406");
         }
-        if (scene.fog) (scene.fog as THREE.FogExp2).color.set('#050a0e');
+        if (scene.fog) (scene.fog as THREE.FogExp2).color.set('#000000');
       }
     }
   });
@@ -68,15 +70,15 @@ export default function EnvironmentController() {
   return (
     <>
       <SceneSky />
-      <Stars radius={200} depth={50} count={2000} factor={4} saturation={0} fade speed={1} />
+      <Stars radius={200} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
       <ambientLight ref={ambientRef} intensity={0.5} />
       <directionalLight 
         ref={sunRef}
         position={[100, 150, 100]} 
-        intensity={1} 
+        intensity={2} 
         castShadow 
         shadow-bias={-0.0005}
-        shadow-mapSize={[1024, 1024]} 
+        shadow-mapSize={[1024, 1024]} // Sombras melhores
         shadow-camera-left={-100}
         shadow-camera-right={100}
         shadow-camera-top={100}
