@@ -1,7 +1,7 @@
 
 import React, { useRef, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { Sky, Stars } from '@react-three/drei';
+import { Sky, Stars, Environment } from '@react-three/drei';
 import * as THREE from 'three';
 
 const SceneSky: React.FC = () => {
@@ -48,7 +48,7 @@ export default function EnvironmentController() {
         sunRef.current.color.set('#fffceb'); // Luz solar quente
         
         if (ambientRef.current) {
-            ambientRef.current.intensity = 0.4;
+            ambientRef.current.intensity = 0.6; // Aumentado um pouco para ajudar a armadura prata
             ambientRef.current.color.set("#cce0ff"); // Ambiente azulado (skylight)
         }
         
@@ -69,6 +69,9 @@ export default function EnvironmentController() {
 
   return (
     <>
+      {/* Environment Preset é essencial para o material PRATA refletir algo além do preto */}
+      <Environment preset="park" background={false} />
+      
       <SceneSky />
       <Stars radius={200} depth={50} count={3000} factor={4} saturation={0} fade speed={1} />
       <ambientLight ref={ambientRef} intensity={0.5} />

@@ -1,14 +1,14 @@
 
 import React, { useRef, useMemo, useEffect } from 'react';
 import * as THREE from 'three';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useFrame } from '@react-three/fiber';
 import { inputState } from './InputState';
 
-// OTIMIZAÇÃO: 10x10 Chunks = 100 chunks (era 196). Suficiente para raio 1000.
-const CHUNKS_PER_SIDE = 10; 
-const CHUNK_SIZE = 200; 
-// OTIMIZAÇÃO: Reduzido de 4500 para 2200.
-const GRASS_PER_CHUNK = 2200; 
+// OTIMIZAÇÃO CRÍTICA: Reduzido para evitar Crash WebGL
+const CHUNKS_PER_SIDE = 6; 
+const CHUNK_SIZE = 250; 
+// Reduzido de 16000 para 4500. 1 milhão de instâncias derruba o contexto.
+const GRASS_PER_CHUNK = 4500; 
 const WORLD_RADIUS = 1000; 
 
 const HEIGHT_GLSL = `
@@ -21,7 +21,6 @@ const HEIGHT_GLSL = `
   }
 `;
 
-// FBM (Fractal Brownian Motion) para textura detalhada
 const NOISE_GLSL = `
   float hash(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -38,8 +37,6 @@ const NOISE_GLSL = `
     float d = hash(i + vec2(1.0, 1.0));
     return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
   }
-  
-  // Fractal Noise para textura de terra/grama
   float fbm(vec2 p) {
     float v = 0.0;
     float a = 0.5;
@@ -54,18 +51,18 @@ const NOISE_GLSL = `
   }
 `;
 
-// COMPENSAÇÃO: Grama mais larga (0.6) e mais alta (1.4)
-const sharedGrassGeo = new THREE.PlaneGeometry(0.6, 1.4, 1, 2);
-sharedGrassGeo.translate(0, 0.5, 0); 
+// Ajuste leve na largura (0.12 -> 0.2) para compensar a menor densidade sem perder o look "fino"
+const sharedGrassGeo = new THREE.PlaneGeometry(0.2, 0.7, 1, 1);
+sharedGrassGeo.translate(0, 0.35, 0); 
 
 const sharedGrassMat = new THREE.ShaderMaterial({
   uniforms: {
     uTime: { value: 0 },
     uCameraPos: { value: new THREE.Vector3() },
     uPlayerPos: { value: new THREE.Vector3() },
-    uColorBase: { value: new THREE.Color("#1a120b") }, 
-    uColorMid: { value: new THREE.Color("#166534") },  
-    uColorTip: { value: new THREE.Color("#4ade80") },  
+    uColorBase: { value: new THREE.Color("#0a1f0a") }, // Base escura profunda
+    uColorMid: { value: new THREE.Color("#2d5a27") },  
+    uColorTip: { value: new THREE.Color("#86c268") },  // Ponta mais clara
     uFogColor: { value: new THREE.Color("#050a0e") } 
   },
   vertexShader: `
@@ -89,25 +86,39 @@ const sharedGrassMat = new THREE.ShaderMaterial({
       
       vWorldPos = worldBasePos.xyz;
 
+      // Lógica de Clumping (Touceiras)
+      float clumpNoise = noise(worldBasePos.xz * 0.05); 
+      float growthFactor = smoothstep(0.2, 0.8, clumpNoise);
+
       float distToCamera = distance(worldBasePos.xyz, uCameraPos);
       vFade = 1.0 - smoothstep(60.0, 110.0, distToCamera); 
       
-      if (vFade < 0.01) {
+      // Otimização agressiva: descarta vertex se longe ou pequeno
+      if (vFade < 0.01 || growthFactor < 0.1) {
         gl_Position = vec4(0.0, 0.0, 0.0, 1.0);
         return;
       }
 
       vec3 dirToPlayer = worldBasePos.xyz - uPlayerPos;
       float distToPlayer = length(vec2(dirToPlayer.x, dirToPlayer.z));
-      float pushStrength = 1.0 - smoothstep(0.0, 1.5, distToPlayer);
+      float pushStrength = 1.0 - smoothstep(0.0, 1.2, distToPlayer);
       
       vec3 pos = position;
-      float wind = sin(uTime * 1.2 + worldBasePos.x * 0.2 + worldBasePos.z * 0.2) * 0.15 * uv.y;
+      
+      // Aplica altura variada baseada no clump
+      pos.y *= (0.5 + 0.8 * growthFactor);
+
+      // Vento refinado para grama fina
+      float windFreq = 2.0;
+      float windAmp = 0.15;
+      float wind = sin(uTime * windFreq + worldBasePos.x * 0.5 + worldBasePos.z * 0.5) * windAmp * uv.y;
+      wind += sin(uTime * 5.0 + worldBasePos.x) * 0.05 * uv.y;
+      
       pos.x += wind;
       
       if (pushStrength > 0.0) {
         vec2 pushDir = normalize(dirToPlayer.xz);
-        float displacement = pushStrength * 0.8 * uv.y;
+        float displacement = pushStrength * 0.6 * uv.y;
         pos.x += pushDir.x * displacement;
         pos.z += pushDir.y * displacement;
         pos.y *= (1.0 - pushStrength * 0.4); 
@@ -131,8 +142,11 @@ const sharedGrassMat = new THREE.ShaderMaterial({
     void main() {
       if (vFade < 0.1) discard;
       
-      vec3 color = mix(uColorBase, uColorMid, smoothstep(0.0, 0.6, vUv.y));
-      color = mix(color, uColorTip, smoothstep(0.6, 1.0, vUv.y));
+      // Gradiente de 3 cores para riqueza visual
+      vec3 color = mix(uColorBase, uColorMid, smoothstep(0.0, 0.4, vUv.y));
+      color = mix(color, uColorTip, smoothstep(0.4, 1.0, vUv.y));
+      
+      // Fog manual
       color = mix(color, uFogColor, 1.0 - vFade);
       
       gl_FragColor = vec4(color, vFade);
@@ -148,6 +162,13 @@ const GrassChunk: React.FC<{ position: [number, number, number] }> = ({ position
 
   useEffect(() => {
     if (!meshRef.current) return;
+    
+    // Culling manual: Importante para performance
+    const geo = sharedGrassGeo.clone();
+    const radius = (CHUNK_SIZE * Math.sqrt(2)) / 2;
+    geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(position[0], 0, position[2]), radius);
+    meshRef.current.geometry = geo;
+
     const dummy = new THREE.Object3D();
     
     for (let i = 0; i < GRASS_PER_CHUNK; i++) {
@@ -160,8 +181,11 @@ const GrassChunk: React.FC<{ position: [number, number, number] }> = ({ position
       } else {
         dummy.position.set(x, 0, z); 
         dummy.rotation.y = Math.random() * Math.PI;
-        const s = 0.7 + Math.random() * 0.6;
-        dummy.scale.set(s, s, s);
+        
+        // Escala variada
+        const h = 0.7 + Math.random() * 0.6; 
+        const w = 0.8 + Math.random() * 0.4;
+        dummy.scale.set(w, h, w);
       }
       dummy.updateMatrix();
       meshRef.current.setMatrixAt(i, dummy.matrix);
@@ -177,16 +201,16 @@ const GrassChunk: React.FC<{ position: [number, number, number] }> = ({ position
     }
   });
 
-  return <instancedMesh ref={meshRef} args={[sharedGrassGeo, sharedGrassMat, GRASS_PER_CHUNK]} frustumCulled={false} />;
+  return <instancedMesh ref={meshRef} args={[sharedGrassGeo, sharedGrassMat, GRASS_PER_CHUNK]} />;
 };
 
 const Ground: React.FC = () => {
   const groundMat = useMemo(() => {
     return new THREE.ShaderMaterial({
       uniforms: {
-        uColorDirt: { value: new THREE.Color("#2f2219") },
-        uColorGrass: { value: new THREE.Color("#163011") },
-        uColorGrassLight: { value: new THREE.Color("#254d1c") },
+        uColorDirt: { value: new THREE.Color("#1a1410") },
+        uColorGrass: { value: new THREE.Color("#0d2608") },
+        uColorGrassLight: { value: new THREE.Color("#1a3d12") },
         uFogColor: { value: new THREE.Color("#050a0e") },
         uCameraPos: { value: new THREE.Vector3() }
       },
@@ -237,7 +261,7 @@ const Ground: React.FC = () => {
           float dirtMix = smoothstep(0.95, 0.7, vSlope) + patches * 0.3;
           vec3 finalColor = mix(grassColor, uColorDirt, clamp(dirtMix, 0.0, 1.0));
           
-          finalColor *= 0.8 + 0.4 * grain; 
+          finalColor *= 0.6 + 0.4 * grain;
           float light = dot(vNormal, normalize(vec3(0.5, 1.0, 0.5)));
           finalColor *= (0.4 + 0.6 * light); 
 

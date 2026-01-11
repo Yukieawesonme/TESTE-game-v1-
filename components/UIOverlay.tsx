@@ -7,11 +7,15 @@ interface UIOverlayProps {
   togglePause: () => void;
   isInverted: boolean;
   toggleInvert: () => void;
+  enableAA: boolean;
+  toggleAA: () => void;
+  quality: 'low' | 'high';
+  setQuality: (q: 'low' | 'high') => void;
 }
 
-const UIOverlay: React.FC<UIOverlayProps> = ({ 
-  isPaused, togglePause, isInverted, toggleInvert 
-}) => {
+export default function UIOverlay({ 
+  isPaused, togglePause, isInverted, toggleInvert, enableAA, toggleAA, quality, setQuality
+}: UIOverlayProps) {
   const [atBoundary, setAtBoundary] = useState(false);
   const [pos, setPos] = useState({ x: 0, z: 0 });
 
@@ -43,28 +47,45 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
 
       {/* Botões Superiores */}
       <div className="absolute top-4 right-4 pointer-events-auto flex gap-2">
-        <button onClick={togglePause} className="p-3 bg-black/40 rounded-full text-white border border-white/10 text-[10px] font-bold">
-          {isPaused ? "JOGAR" : "PAUSE"}
+        <button onClick={togglePause} className="p-3 bg-black/40 rounded-full text-white border border-white/10 text-[10px] font-bold hover:bg-white/10 transition-colors">
+          {isPaused ? "JOGAR" : "CONFIGURAÇÕES"}
         </button>
       </div>
 
+      {/* Menu de Pausa / Configurações */}
       {isPaused && (
-        <div className="absolute inset-0 bg-black/80 flex items-center justify-center pointer-events-auto p-4">
+        <div className="absolute inset-0 bg-black/80 flex items-center justify-center pointer-events-auto p-4 animate-in fade-in duration-200">
           <div className="bg-zinc-900 p-8 rounded-3xl text-center border border-white/10 max-w-sm w-full shadow-2xl">
             <h2 className="text-white text-3xl font-black mb-6 italic tracking-tighter">OPÇÕES</h2>
             
-            <button onClick={togglePause} className="w-full bg-green-600 text-white py-4 rounded-xl mb-3 font-bold active:scale-95 transition-transform">VOLTAR</button>
-            
-            <button onClick={toggleInvert} className="w-full bg-white/5 text-white py-4 rounded-xl mb-3 font-bold active:scale-95 transition-transform border border-white/10">
-              {isInverted ? "CONTROLES: INVERTIDOS" : "CONTROLES: NORMAL"}
+            <button onClick={togglePause} className="w-full bg-green-600 text-white py-4 rounded-xl mb-4 font-bold active:scale-95 transition-transform hover:bg-green-500 shadow-lg shadow-green-900/20">
+              VOLTAR AO JOGO
             </button>
+            
+            <div className="space-y-3">
+              <button onClick={toggleInvert} className="w-full bg-white/5 text-white py-4 rounded-xl font-bold active:scale-95 transition-all border border-white/5 hover:bg-white/10 hover:border-white/20">
+                {isInverted ? "CONTROLES: INVERTIDOS" : "CONTROLES: NORMAL"}
+              </button>
 
-            <p className="text-zinc-600 text-[10px] uppercase font-bold tracking-widest mt-6">VERDE v1.0.9 • EXPLORAÇÃO 3D</p>
+              <button 
+                onClick={() => setQuality(quality === 'high' ? 'low' : 'high')} 
+                className={`w-full py-4 rounded-xl font-bold active:scale-95 transition-all border ${quality === 'high' ? 'bg-purple-600/20 text-purple-400 border-purple-500/30' : 'bg-white/5 text-zinc-400 border-white/5'}`}
+              >
+                {quality === 'high' ? "GRÁFICOS: ALTA FIDELIDADE" : "GRÁFICOS: DESEMPENHO"}
+              </button>
+
+              <button 
+                onClick={toggleAA} 
+                className={`w-full py-4 rounded-xl font-bold active:scale-95 transition-all border ${enableAA ? 'bg-blue-600/20 text-blue-400 border-blue-500/30' : 'bg-white/5 text-zinc-400 border-white/5'}`}
+              >
+                {enableAA ? "ANTI-ALIASING: LIGADO" : "ANTI-ALIASING: DESLIGADO"}
+              </button>
+            </div>
+
+            <p className="text-zinc-600 text-[10px] uppercase font-bold tracking-widest mt-8">VERDE v1.2.0 • ENGINE OTIMIZADA</p>
           </div>
         </div>
       )}
     </div>
   );
-};
-
-export default UIOverlay;
+}
